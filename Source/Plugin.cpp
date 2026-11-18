@@ -91,6 +91,7 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
    "mode","voiceMode","age","voiceWidth","hold","chorusMode","chorus","fxDrive",                  // VOICES, CHORUS
    "polyShape","polyMode","polyBP","lfoMode","lfoAmp","lfoOsc","atMode",                           // MODULATION
    "voiceSpread","chordOn","unisonVoices",
+   "atPitch","ribbon","ribbonRange",
    "dualLayer","hpfII","al1","al2","fa2","fd2","fs2","fr2","attack2","decay2","sustain2","release2",       // DUAL LAYERS                                                                        // VOICE SPREAD, CHORD MEMORY
    "arpOn","arpSync","arpPattern","arpDivision","arpOctaves","arpTempo","arpGate","delayOn",      // ARPEGGIO
    "delayTime","delaySync","delayFeedback","delayMod","delayMix","reverbOn","reverbType","reverbSize", // DELAY, REVERB
@@ -109,7 +110,7 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
     {"fattack","Flt Attack"},{"fdecay","Flt Decay"},{"fsustain","Flt Sustain"},{"frelease","Flt Release"},{"envLink","Flt Env Src"},{"envInvert","A Env Pol"},{"envPitch","Env>Pitch"},{"pwmSource","PWM Source"},
     {"rate","LFO Rate"},{"lfoDelay","LFO Delay"},{"lfoShape","LFO Wave"},{"lfoPitch","LFO Pitch"},{"wheelDepth","Wheel Vib"},{"bendRange","Bend Range"},{"bendFilter","Bend>Filter"},{"unisonSpread","Uni Spread"},
     {"filterBType","B Model"},{"cutoffB","B Freq"},{"resonanceB","B Reso"},{"envB","B Env"},{"slopeB","B Slope"},{"filterRoute","Routing"},{"filterBlend","A/B Mix"},{"voiceDrive","Drive Pre"},
-    {"mode","Voices"},{"voiceMode","Assign"},{"age","Age"},{"voiceWidth","Width"},{"chordOn","Chord"},{"voiceSpread","Spread"},{"dualLayer","Dual"},{"hpfII","HPF II"},{"al1","F A.Level I"},{"al2","F A.Level II"},{"fa2","F Attack II"},{"fd2","F Decay II"},{"fs2","F I.Level II"},{"fr2","F Release II"},{"attack2","Attack II"},{"decay2","Decay II"},{"sustain2","Sustain II"},{"release2","Release II"},{"unisonVoices","Uni Voices"},{"polyShape","PM>Shape2"},{"polyMode","PM>Mode"},{"polyBP","PM>BandPass"},{"lfoMode","LFO>Mode"},{"lfoAmp","LFO>Level"},{"lfoOsc","LFO>VCO"},{"atMode","Press>Mode"},{"hold","Hold"},{"chorusMode","Chorus"},{"chorus","Chorus Mix"},{"gain","Volume"},
+    {"mode","Voices"},{"voiceMode","Assign"},{"age","Age"},{"voiceWidth","Width"},{"chordOn","Chord"},{"voiceSpread","Spread"},{"dualLayer","Dual"},{"atPitch","Press>Pitch"},{"ribbon","Ribbon"},{"ribbonRange","Ribbon Range"},{"hpfII","HPF II"},{"al1","F A.Level I"},{"al2","F A.Level II"},{"fa2","F Attack II"},{"fd2","F Decay II"},{"fs2","F I.Level II"},{"fr2","F Release II"},{"attack2","Attack II"},{"decay2","Decay II"},{"sustain2","Sustain II"},{"release2","Release II"},{"unisonVoices","Uni Voices"},{"polyShape","PM>Shape2"},{"polyMode","PM>Mode"},{"polyBP","PM>BandPass"},{"lfoMode","LFO>Mode"},{"lfoAmp","LFO>Level"},{"lfoOsc","LFO>VCO"},{"atMode","Press>Mode"},{"hold","Hold"},{"chorusMode","Chorus"},{"chorus","Chorus Mix"},{"gain","Volume"},
     {"arpOn","Arp On"},{"arpSync","Arp Sync"},{"arpPattern","Arp Mode"},{"arpDivision","Arp Step"},{"arpOctaves","Arp Range"},{"arpTempo","Arp Tempo"},{"arpGate","Arp Gate"},{"fxDrive","Drive Post"},
     {"delayTime","Dly Time"},{"delaySync","Dly Sync"},{"delayFeedback","Dly Fdbk"},{"delayMod","Dly Mod"},{"delayMix","Dly Level"},{"reverbType","Rev Type"},{"reverbSize","Rev Size"},{"reverbDamp","Rev Damp"},
     {"reverbColor","Rev Color"},{"reverbMix","Rev Level"},{"velFilter","Vel>Filter"},{"atFilter","Press>Filt"},{"delayOn","Dly On"},{"reverbOn","Rev On"},{"lfoSync","LFO Sync"},{"lfoKeyTrig","LFO KeyTrig"},{"envLfoTrig","Env LFO Trig"},{"wheelFilter","Wheel>Filt"},{"lfoManual","LFO Manual"},{"atVolume","Press>Vol"},{"atLfo","Press>LFO"},{"atDrive","Press>Drive"},{"lfoTrig","LFO Trig"},{"masterTune","Master Tune"}};
@@ -223,6 +224,9 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
   keep(std::make_unique<AudioParameterBool>(ParameterID{"polyBP",1},label("polyBP","Poly-Mod to band-pass"),false));
   add("lfoMode","LFO to filter mode",0,1,0);add("lfoAmp","LFO to level",0,1,0);choice("lfoOsc","LFO pitch target",{"VCO 1+2","VCO 1","VCO 2"});
   add("atMode","Pressure to filter mode",0,1,0);
+  // EXPRESSION (NOCTURNE): pressure per key (polyphonic aftertouch) or for all keys can bend the note up; the RIBBON bends
+  // every note from where it is touched, by up to RANGE semitones each way, and glides back when released.
+  add("atPitch","Pressure to pitch (semitones)",0,2,0);add("ribbon","Ribbon",-1,1,0);choice("ribbonRange","Ribbon range",{"2","5","7","12","24"},3);
   add("atVolume","Pressure to volume",0,1,0);add("atLfo","Pressure to LFO on the filters",0,1,0);add("atDrive","Pressure to drive",0,1,0);
   // LFO MAN: the LFO only runs while LFO TRIG is held (a panel key, or any learned MIDI button), its DELAY counted from the press.
   keep(std::make_unique<AudioParameterBool>(ParameterID{"lfoManual",1},label("lfoManual","LFO manual trigger mode"),false));
@@ -427,6 +431,8 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
   double lfoBpm=e.value("arpTempo");std::optional<double> lfoBeats;
   if(auto* playHead=getPlayHead()) if(auto position=playHead->getPosition()){if(auto hostBpm=position->getBpm())lfoBpm=*hostBpm;if(position->getIsPlaying())if(auto beats=position->getPpqPosition())lfoBeats=*beats;}
   renderLfo(e,buffer.getNumSamples(),lfoBpm,lfoBeats);
+  {static constexpr float ranges[5]={2.f,5.f,7.f,12.f,24.f};const float target=e.value("ribbon")*ranges[jlimit(0,4,int(e.value("ribbonRange")))];
+   e.modulation.ribbon+=(target-e.modulation.ribbon)*(1.f-std::exp(-float(buffer.getNumSamples())/(.025f*float(sampleRate))));} // RIBBON: about 25 ms of glide
   (mode==0?e.voices6:e.voices8).renderNextBlock(buffer,midi,0,buffer.getNumSamples());
   {auto& other=mode==0?e.voices8:e.voices6;bool ringing=false;for(int i=0;i<other.getNumVoices()&&!ringing;++i)ringing=other.getVoice(i)->isVoiceActive();
    if(ringing){e.silence.clear();other.renderNextBlock(buffer,e.silence,0,buffer.getNumSamples());}}

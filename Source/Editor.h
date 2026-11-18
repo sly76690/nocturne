@@ -421,6 +421,28 @@ private:
  StringArray names; ParameterAttachment attachment;
 };
 
+/* NOCTURNE RIBBON: a long touch strip above the keys. The pitch moves from where the finger lands, follows the slide
+   (half the strip = the full RANGE) and springs back to the note when released. */
+class Ribbon : public Component {
+public:
+ explicit Ribbon(RangedAudioParameter& p):parameter(p){getProperties().set("parameterId","ribbon");setName("Ribbon");}
+ void paint(Graphics& g) override {
+  auto r=getLocalBounds().toFloat();g.setColour(Colours::black);g.fillRoundedRectangle(r,3.f);
+  auto strip=r.reduced(2.f);ColourGradient body(Colour(0xff2a2530),0,strip.getY(),Colour(0xff121014),0,strip.getBottom(),false);
+  g.setGradientFill(body);g.fillRoundedRectangle(strip,2.f);
+  g.setColour(Colours::white.withAlpha(.06f));for(int i=1;i<24;++i){const float x=strip.getX()+strip.getWidth()*float(i)/24.f;g.drawVerticalLine(roundToInt(x),strip.getY()+3,strip.getBottom()-3);}
+  if(touched){const float x=jlimit(strip.getX(),strip.getRight(),touchX);g.setColour(orbitui::teal.withAlpha(.35f));
+   g.fillRect(Rectangle<float>(jmin(x,startX),strip.getY()+1,std::abs(x-startX),strip.getHeight()-2));
+   g.setColour(orbitui::led);g.fillRect(Rectangle<float>(3.f,strip.getHeight()-2).withCentre({x,strip.getCentreY()}));}
+  g.setColour(orbitui::dim.withAlpha(.55f));g.setFont(orbitui::legend(10.f));g.drawText("RIBBON",strip.reduced(8,0),Justification::centredLeft);}
+ void mouseDown(const MouseEvent& e) override {touched=true;startX=touchX=float(e.x);parameter.beginChangeGesture();repaint();}
+ void mouseDrag(const MouseEvent& e) override {touchX=float(e.x);const float span=jmax(1.f,float(getWidth())*.5f);
+  parameter.setValueNotifyingHost(parameter.convertTo0to1(jlimit(-1.f,1.f,(touchX-startX)/span)));repaint();}
+ void mouseUp(const MouseEvent&) override {touched=false;parameter.setValueNotifyingHost(parameter.convertTo0to1(0.f));parameter.endChangeGesture();repaint();}
+private:
+ RangedAudioParameter& parameter;bool touched=false;float startX=0,touchX=0;
+};
+
 class Editor : public AudioProcessorEditor, private Timer {
  using APVTS = AudioProcessorValueTreeState;
  enum { designW = 1600, designH = 1000, left = 32, contentW = 1536, gap = 12 };
@@ -715,12 +737,12 @@ private:
   addSync("lfoSync",5,rateKnob,switches[0].withHeight(45),-1,rateValue);
   printedToggle("lfoKeyTrig","KEY",switches[1]);printedToggle("envLfoTrig","ENV",switches[2]);printedToggle("lfoManual","MAN",switches[3]);
   menuChoice("pwmSource","PWM",bottom[1]);menuChoice("lfoOsc","P>VCO",bottom[2]);compactKnob("envPitch","ENV>P",bottom[3]);compactKnob("wheelDepth","WHEEL",bottom[4]);compactKnob("wheelFilter","WHL>F",bottom[5]);
-  auto filter=section("FILTER B",steel,{938,row2Y,220,row2H});auto cells=split(filter.withHeight(80),{1,1,1,1});
+  auto filter=section("FILTER B",steel,{938,row2Y,196,row2H});auto cells=split(filter.withHeight(80),{1,1,1,1});
   compactKnob("cutoffB","FREQ",cells[0]);compactKnob("resonanceB","RES",cells[1]);compactKnob("envB","ENV",cells[2]);compactKnob("filterBlend","MIX",cells[3]);
-  cells=split(filter.withTrimmedTop(94),{1,1});chipChoice("filterBType","MODEL",{"LADDER","SVF"},cells[0].withHeight(72),true);chipChoice("slopeB","SLOPE",{"12","24"},cells[1].withHeight(72),true);
-  auto routing=section("ROUTING",steel,{1164,row2Y,200,row2H});chipChoice("filterRoute","",{"A","B","A>B","B>A","PAR"},routing.withHeight(65));
+  cells=split(filter.withTrimmedTop(94),{1,1});chipChoice("filterBType","MODEL",{"LADDER","SVF","MULTI"},cells[0].withHeight(95),true);chipChoice("slopeB","SLOPE",{"12","24"},cells[1].withHeight(72),true);
+  auto routing=section("ROUTING",steel,{1140,row2Y,224,row2H});chipChoice("filterRoute","",{"A","B","A>B","B>A","PAR"},routing.withHeight(65));
   caption("PRESSURE",routing.withTrimmedTop(80).withHeight(15),-1,12);
-  cells=split(routing.withTrimmedTop(100),{1,1,1,1,1});compactKnob("atFilter","FILT",cells[0]);compactKnob("atMode","MODE",cells[1]);compactKnob("atVolume","AMP",cells[2]);compactKnob("atLfo","LFO",cells[3]);compactKnob("atDrive","DRV",cells[4]);
+  cells=split(routing.withTrimmedTop(100),{1,1,1,1,1,1});compactKnob("atFilter","FILT",cells[0]);compactKnob("atMode","MODE",cells[1]);compactKnob("atVolume","AMP",cells[2]);compactKnob("atLfo","LFO",cells[3]);compactKnob("atDrive","DRV",cells[4]);compactKnob("atPitch","PITCH",cells[5]);
   // EFFECTS, in three bands: CHORUS (mode and MIX) on a tinted well, PHASER on its own well, then the output DRIVE.
   auto fx=section("EFFECTS",teal,{1370,row2Y,198,row2H});const int quarter=fx.getWidth()*3/4;
   wells.push_back({fx.withHeight(62).expanded(4,0),teal.withAlpha(.22f)});
@@ -818,7 +840,11 @@ private:
   chordKey->setClickingTogglesState(false);chordKey->onClick=[this]{auto* p=orbit.state.getParameter("chordOn");const bool learned=orbit.learnChord();
    p->beginChangeGesture();p->setValueNotifyingHost(learned||p->getValue()<.5f?1.f:0.f);p->endChangeGesture();};
   keyboard.setScrollButtonsVisible(false); keyboard.setKeyWidth(float(keysW) / 36.f); keyboard.setOctaveForMiddleC(4); keyboard.setBlackNoteLengthProportion(.62f);
-  place(keyboard, {left + 186, keysY + 6, keysW, keysH - 6}, -1);
+  /* RIBBON over the keys, its RANGE (semitones each way) at its right end; the keyboard sits just below. */
+  ribbon=std::make_unique<Ribbon>(*orbit.state.getParameter("ribbon"));place(*ribbon,{left+186,keysY+6,keysW-84,24},-1);
+  {auto* button=menuButtons.add(new ChoiceMenuButton(*orbit.state.getParameter("ribbonRange")));button->getProperties().set("parameterId","ribbonRange");
+   button->setTooltip("Ribbon range, semitones each way");place(*button,{left+186+keysW-80,keysY+4,80,28},-1);}
+  place(keyboard, {left + 186, keysY + 34, keysW, keysH - 34}, -1);
   // OUTPUT beside the keys: VOLUME and TUNE, where the hand finds them while playing.
   auto out=section("OUTPUT",teal,{left+contentW-outputW,keysY,outputW,keysH});
   addRowKnob("gain","VOLUME",out.withHeight(84));compactKnob("masterTune","TUNE",out.withTrimmedTop(100).withHeight(70));
@@ -901,7 +927,7 @@ private:
   DynamicObject::Ptr root = new DynamicObject();
   root->setProperty("width", int(designW)); root->setProperty("height", int(designH)); root->setProperty("left", int(left)); root->setProperty("contentWidth", int(contentW));
   root->setProperty("headerY", int(headerY)); root->setProperty("accentY", int(lineY));
-  root->setProperty("display", var(boxed({564, 10, 290, 56}).get())); root->setProperty("keyboardBlock", var(boxed({left, keysY + 6, 132, keysH - 6}).get())); root->setProperty("keyboard", var(boxed({left + 186, keysY, contentW - 186, keysH}).get()));
+  root->setProperty("display", var(boxed({564, 10, 290, 56}).get())); root->setProperty("keyboardBlock", var(boxed({left, keysY + 6, 132, keysH - 6}).get())); root->setProperty("keyboard", var(boxed({left + 186, keysY + 34, keysW, keysH - 34}).get()));root->setProperty("ribbon", var(boxed({left + 186, keysY + 6, keysW - 84, 24}).get()));
   Array<var> keyList; // every key of the on-screen keyboard, so that the rendered keys sit exactly under the playable ones
   for (int note = keyboard.getRangeStart(); note <= keyboard.getRangeEnd(); ++note) {
    const auto key = keyboard.getRectangleForKey(note).translated(float(keyboard.getX()), float(keyboard.getY()));
@@ -1078,7 +1104,7 @@ SequenceEditor sequenceEditor{orbit};
  struct Sync { std::unique_ptr<SyncKey> key; std::unique_ptr<SyncKnob> knob; Slider* free = nullptr; Label* value = nullptr; const char* id = ""; bool wasSynced = true; };
  OwnedArray<Sync> syncs;
  OwnedArray<TextButton> bankButtons, patchButtons, layerKeys;
- Slider pitchWheel; ComboBox presets; TextButton saveButton, loadButton, octDown, octUp, midiButton, lfoTrigButton; bool lfoTrigDown = false; void* forceMonitor = nullptr; int sentPressure = 0;
+ std::unique_ptr<Ribbon> ribbon; Slider pitchWheel; ComboBox presets; TextButton saveButton, loadButton, octDown, octUp, midiButton, lfoTrigButton; bool lfoTrigDown = false; void* forceMonitor = nullptr; int sentPressure = 0;
  StringArray userNames, soundNames; String displayLine; Colour sectionColour{orbitui::neutral};
  int page = 0, octave = 2, shownBank = 0, lastProgram = -1;
 };

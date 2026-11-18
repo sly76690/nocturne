@@ -88,6 +88,7 @@ private:
 // every voice reads the same value at the same sample.
 struct ModulationBus {
  std::vector<float> lfo,phase; int shape=0; double step=0; // value and phase per sample, waveform, cycles per sample
+ float ribbon=0; // RIBBON: the pitch offset of the ribbon, in semitones, smoothed per block
  bool manual=false; double manualAge=-1; // LFO MAN: samples since LFO TRIG was pressed, -1 while it is up
  static float wave(int shape,float t){if(shape==1)return std::sin(t*MathConstants<float>::twoPi);if(shape==2)return 2*t-1;if(shape==3)return t<.5f?1.f:-1.f;if(shape==4)return 1-2*t;return t<.25f?4*t:(t<.75f?2-4*t:4*t-4);}
 };
@@ -264,7 +265,7 @@ public:
   source.polyEnv=p("polyEnv");source.polyOsc=p("polyOsc");source.polyFreq=p("polyFreq")>.5f;source.polyWidth=p("polyWidth")>.5f;source.polyShape=p("polyShape")>.5f;
   const bool polyFilter=p("polyFilter")>.5f,polyMode=p("polyMode")>.5f,polyBand=p("polyBP")>.5f;
   // MODULATION of the filter MODE (MULTI): LFO, pressure and POLY-MOD; LFO > AMP (tremolo); LFO > PITCH on both VCOs or one.
-  const float lfoModeDepth=p("lfoMode")*.5f,pressMode=p("atMode")*.5f,lfoAmpDepth=p("lfoAmp");const int lfoOsc=int(p("lfoOsc"));
+  const float pressPitch=p("atPitch"),lfoModeDepth=p("lfoMode")*.5f,pressMode=p("atMode")*.5f,lfoAmpDepth=p("lfoAmp");const int lfoOsc=int(p("lfoOsc"));
   oscillators.configure(source,fresh);
   const bool linked=p("envLink")>.5f;
   // VCA mode GATE: the amplifier simply opens and closes with the key; the ADSR keeps running for a filter that follows it.
@@ -323,7 +324,8 @@ public:
    const bool gliding=pitch.isSmoothing();const double pitchNow=pitch.getNextValue(),frequency=gliding?std::exp2(pitchNow):hz; // exactly the note once the glide is over
    if(serial==previousPitch.starts)previousPitch.pitch=frequency;
    const double lfoRatio=std::exp2(double(modulation*pitchDepth)/12.);
-   const double frequencyNow=frequency*bend*std::exp2(double(lfoNow*vibratoDepth*wheel)/12.)*(lfoOsc==0?lfoRatio:1.);
+   // RIBBON and PRESSURE > PITCH (a key pressed harder bends its own note up) join the wheel vibrato.
+   const double frequencyNow=frequency*bend*std::exp2(double(lfoNow*vibratoDepth*wheel+bus.ribbon+pressureNow*pressPitch)/12.)*(lfoOsc==0?lfoRatio:1.);
    const double ratio1=lfoOsc==1?lfoRatio:1.,ratio2=lfoOsc==2?lfoRatio:1.;
    const float modeShift=modulation*lfoModeDepth+pressureNow*pressMode;
    const float pwmSignal=pwmSource==0?.18f*modulation:pwmSource==2?.4f*fe:pwmSource==3?-.4f*fe:pwmSource==4?.4f*e:pwmSource==5?-.4f*e:0.f; // LFO, MAN, filter env +/-, amp env +/-
