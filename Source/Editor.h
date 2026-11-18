@@ -739,10 +739,14 @@ private:
   menuChoice("pwmSource","PWM",bottom[1]);menuChoice("lfoOsc","P>VCO",bottom[2]);compactKnob("envPitch","ENV>P",bottom[3]);compactKnob("wheelDepth","WHEEL",bottom[4]);compactKnob("wheelFilter","WHL>F",bottom[5]);
   auto filter=section("FILTER B",steel,{938,row2Y,196,row2H});auto cells=split(filter.withHeight(80),{1,1,1,1});
   compactKnob("cutoffB","FREQ",cells[0]);compactKnob("resonanceB","RES",cells[1]);compactKnob("envB","ENV",cells[2]);compactKnob("filterBlend","MIX",cells[3]);
-  cells=split(filter.withTrimmedTop(94),{1,1});chipChoice("filterBType","MODEL",{"LADDER","SVF","MULTI"},cells[0].withHeight(95),true);chipChoice("slopeB","SLOPE",{"12","24"},cells[1].withHeight(72),true);
-  auto routing=section("ROUTING",steel,{1140,row2Y,224,row2H});chipChoice("filterRoute","",{"A","B","A>B","B>A","PAR"},routing.withHeight(65));
-  caption("PRESSURE",routing.withTrimmedTop(80).withHeight(15),-1,12);
-  cells=split(routing.withTrimmedTop(100),{1,1,1,1,1,1});compactKnob("atFilter","FILT",cells[0]);compactKnob("atMode","MODE",cells[1]);compactKnob("atVolume","AMP",cells[2]);compactKnob("atLfo","LFO",cells[3]);compactKnob("atDrive","DRV",cells[4]);compactKnob("atPitch","PITCH",cells[5]);
+  cells=split(filter.withTrimmedTop(94),{1.25f,.9f,1.1f});chipChoice("filterBType","MODEL",{"LADDER","SVF","MULTI"},cells[0].withHeight(95),true);chipChoice("slopeB","SLOPE",{"12","24"},cells[1].withHeight(72),true);
+  menuChoice("filterRoute","ROUTE",cells[2]); /* NOCTURNE: the routing as a menu, which frees the column for PRESSURE and RING MOD */
+  /* PRESSURE (key pressure, per key with polyphonic aftertouch) above the RING MODULATOR, sharing the column. */
+  auto press=section("PRESSURE",steel,{1140,row2Y,224,108});
+  cells=split(press,{1,1,1,1,1,1});compactKnob("atFilter","FILT",cells[0]);compactKnob("atMode","MODE",cells[1]);compactKnob("atVolume","AMP",cells[2]);compactKnob("atLfo","LFO",cells[3]);compactKnob("atDrive","DRV",cells[4]);compactKnob("atPitch","PITCH",cells[5]);
+  auto ring=section("RING MOD",steel,{1140,row2Y+116,224,row2H-116});
+  cells=split(ring,{1,1,1,1,.9f});compactKnob("ringSpeed","SPEED",cells[0]);compactKnob("ringDepth","DEPTH",cells[1]);compactKnob("ringAttack","ATT",cells[2]);compactKnob("ringDecay","DEC",cells[3]);
+  printedToggle("ringKey","KEY",cells[4].withTrimmedTop(4));
   // EFFECTS, in three bands: CHORUS (mode and MIX) on a tinted well, PHASER on its own well, then the output DRIVE.
   auto fx=section("EFFECTS",teal,{1370,row2Y,198,row2H});const int quarter=fx.getWidth()*3/4;
   wells.push_back({fx.withHeight(62).expanded(4,0),teal.withAlpha(.22f)});

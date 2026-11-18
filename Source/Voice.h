@@ -229,6 +229,7 @@ public:
   // A note taken over while it still sounds: what it was putting out fades over a few milliseconds instead of stopping dead.
   tailL+=lastL;tailR+=lastR;lastL=lastR=0;fresh=true;vel=velocity;pitchWheelMoved(wheel);
   a.reset();b.reset();highpass.reset();down.reset();bass=0;env.reset();filterEnv.reset();gate.reset();env2.reset();filterEnv2.reset();highpass2.reset();envelopes();env.noteOn();filterEnv.noteOn();gate.noteOn();env2.noteOn();filterEnv2.noteOn();lfoAge=0;pressure=0;lfoOffset=0;trigPhase=0;lfoLast=0;held=true;
+  ringPhase=0;ringLevel=p("ringAttack")>.001f?0.f:1.f;ringRising=ringLevel<1.f;
  }
  void stopNote(float,bool tail) override {held=false;env.noteOff();filterEnv.noteOff();gate.noteOff();env2.noteOff();filterEnv2.noteOff();if(!tail){env.reset();filterEnv.reset();gate.reset();env2.reset();filterEnv2.reset();clearCurrentNote();}}
  void pitchWheelMoved(int value) override {wheelValue=value;}
@@ -265,6 +266,12 @@ public:
   source.polyEnv=p("polyEnv");source.polyOsc=p("polyOsc");source.polyFreq=p("polyFreq")>.5f;source.polyWidth=p("polyWidth")>.5f;source.polyShape=p("polyShape")>.5f;
   const bool polyFilter=p("polyFilter")>.5f,polyMode=p("polyMode")>.5f,polyBand=p("polyBP")>.5f;
   // MODULATION of the filter MODE (MULTI): LFO, pressure and POLY-MOD; LFO > AMP (tremolo); LFO > PITCH on both VCOs or one.
+  /* RING MODULATOR (NOCTURNE): the voice is multiplied by a sine at SPEED (fixed in Hz, or following the key with KEY:
+     SPEED is then the carrier for middle C). DEPTH blends from the plain voice to the full ring product. Its own
+     envelope shapes DEPTH for each note: it rises over ATTACK, then fades out over DECAY (DECAY at its top holds). */
+  const float ringDepth=p("ringDepth"),ringDecay=p("ringDecay");const bool ringOn=ringDepth>.0005f;
+  const double ringHz=jlimit(.1,sr*.9,double(p("ringSpeed"))*(p("ringKey")>.5f?hz/261.625565:1.)),ringStep=ringHz/(2.*sr);
+  const float ringRise=1.f/jmax(1.f,p("ringAttack")*float(sr)),ringFall=ringDecay>=9.95f?1.f:std::exp(-4.6f/jmax(1.f,ringDecay*float(sr)));
   const float pressPitch=p("atPitch"),lfoModeDepth=p("lfoMode")*.5f,pressMode=p("atMode")*.5f,lfoAmpDepth=p("lfoAmp");const int lfoOsc=int(p("lfoOsc"));
   oscillators.configure(source,fresh);
   const bool linked=p("envLink")>.5f;
@@ -307,6 +314,8 @@ public:
    const float e2=dual?env2.getNextSample():0.f,fe2=dual?filterEnv2.getNextSample():0.f;
    const float open=gate.getNextSample(),amp=gated?open:(vcaSource==2?fe:e);
    pressureNow+=pressRate*(pressure-pressureNow);
+   if(ringRising){ringLevel+=ringRise;if(ringLevel>=1.f){ringLevel=1.f;ringRising=false;}}else ringLevel*=ringFall;
+   const float ringAmount=ringOn?ringDepth*ringLevel:0.f;
    float lfoNow=bus.lfo[size_t(start+i)],t=bus.phase[size_t(start+i)];
    const bool random=bus.shape==5; // RANDOM (sample and hold) comes from the shared LFO: one value for the whole instrument per step
    if(keyTrig){trigPhase+=ownStep;trigPhase-=std::floor(trigPhase);t=float(trigPhase);if(!random)lfoNow=ModulationBus::wave(bus.shape,t);}
@@ -353,6 +362,7 @@ public:
     if(hpfMode>=2)sample=highpass.processSample(0,sample);else if(hpfMode==0){bass+=bassRate*(sample-bass);sample+=boostGain*bass;}
     switch(route){case 1:sample=b.process(sample,cb);break;case 2:sample=b.process(a.process(sample,ca),cb);break;case 3:sample=a.process(b.process(sample,cb),ca);break;case 4:sample=(1-blend)*a.process(sample,ca)+blend*b.process(sample,cb);break;default:sample=a.process(sample,ca);}}
     if(g>0.f){sample+=gMix*((std::tanh(gPush*sample+gLean)-gOffset)*gScale-sample);dc+=dcRate*(sample-dc);sample-=dc;} // the lopsided curve leaves a small offset: removed here
+    if(ringOn){sample*=1.f-ringAmount+ringAmount*float(std::sin(MathConstants<double>::twoPi*ringPhase));ringPhase+=ringStep;ringPhase-=std::floor(ringPhase);}
     twice[k]=sample;
    }
    float sample=down.process(twice[0],twice[1]);
@@ -366,7 +376,7 @@ private:
  AudioProcessorValueTreeState& state;ParameterReadCache parameterReads;GlideMemory& previousPitch;uint64 serial=0;const ModulationBus& bus;const ParamLayer* layer=nullptr;SmoothedValue<double> pitch;Contour env,filterEnv,gate,env2,filterEnv2;dsp::StateVariableTPTFilter<float> highpass2;FilterSlot a,b;HalfBand down;OscillatorBank oscillators;dsp::StateVariableTPTFilter<float> highpass;
  float cutNow=0,cutBNow=0,lastL=0,lastR=0,tailL=0,tailR=0;bool fresh=true,pitched=false;
  Random placeRandom{7919};float place=0;double hz=440;float vel=0,wheel=0,unisonCents=0,voiceGain=1,lfoAge=0,bass=0,pan=0,dc=0;
- float pressure=0,pressureNow=0,lfoLast=0,manualLevel=0;double trigPhase=0,lfoOffset=0;bool held=false;
+ float pressure=0,pressureNow=0,lfoLast=0,manualLevel=0;double trigPhase=0,lfoOffset=0,ringPhase=0;float ringLevel=1;bool ringRising=false;bool held=false;
  bool vintage=false;float cutOffset=0,timeOffset=0,lfoTune=0,keyStretch=1,punch=0;
  // Vintage character, to adjust by ear: envelope time ratio per octave, punch length and its share of cutoff and level,
  // and the spread between voices at AGE = 10 (cutoff in octaves, envelope times, LFO speed).

@@ -18,6 +18,7 @@ static juce::AudioProcessorParameter* parameterOf(juce::AudioProcessor& p,const 
 #include "Unison.h"
 #include "DualLayer.h"
 #include "Expression.h"
+#include "RingMod.h"
 int main() {
  juce::ScopedJuceInitialiser_GUI gui;
  if (!dspRegressionTests()) return 108;
@@ -29,6 +30,7 @@ int main() {
  if (!unisonTests()) return 115;
  if (!dualLayerTests()) return 116;
  if (!expressionTests()) return 117;
+ if (!ringModTests()) return 118;
  if (!liveRegressionTests()) return 107;
  if (!auditRegression()) return 100;
  if (!oscillatorArchitecture()) return 101;
@@ -158,7 +160,7 @@ int main() {
  std::cout<<"PASS state restore\n";
  // Host pages: the panel order for controllers such as Push, every parameter present once, short names.
  {auto* first=dynamic_cast<juce::RangedAudioParameter*>(p->getParameters()[0]);auto* ninth=dynamic_cast<juce::RangedAudioParameter*>(p->getParameters()[8]);
-  if(!first||first->paramID!="polyEnv"||!ninth||ninth->paramID!="vco1Wave"||p->getParameters().size()!=146)return 74;
+  if(!first||first->paramID!="polyEnv"||!ninth||ninth->paramID!="vco1Wave"||p->getParameters().size()!=151)return 74;
   for(auto* b:p->getParameters())if(b->getName(100).length()>12){std::cerr<<"Parameter name too long for a controller: "<<b->getName(100)<<"\n";return 75;}}
  std::cout<<"PASS host pages of eight with short names\n";
  p->setRateAndBufferSizeDetails(48000,256);p->prepareToPlay(48000,256);
