@@ -66,8 +66,10 @@ public:
   const float juno=.7f*level*wave(dco,dd,juce::jlimit(.08f,.92f,width+pwm),waveMix)
                    +.3f*sub*wave(subPhase,dd*.5,.5f,1.f)+noise*.2828f*(noiseDco.nextFloat()*2-1);
   float jupiter=.7f*((1.f-sourceMix)*first+sourceMix*second);
-  if(vcoSub>0.f)jupiter+=.3f*vcoSub*wave(vcoSubPhase,dx*.5,.5f,1.f);
-  if(vcoNoise>0.f)jupiter+=vcoNoise*.2828f*(noiseVco.nextFloat()*2-1);
+  // DUAL (NOCTURNE): the two layers apart, VCO 1 with the sub, VCO 2 alone, the noise shared.
+  one=.7f*first;two=.7f*second;
+  if(vcoSub>0.f){const float s=.3f*vcoSub*wave(vcoSubPhase,dx*.5,.5f,1.f);jupiter+=s;one+=s;}
+  if(vcoNoise>0.f){const float n=vcoNoise*.2828f*(noiseVco.nextFloat()*2-1);jupiter+=n;one+=.5f*n;two+=.5f*n;}
   advance(vcoSubPhase,dx*.5);
   advance(dco,dd);advance(subPhase,dd*.5);
   vco1+=dx;
@@ -79,6 +81,7 @@ public:
 public:
  // The POLY-MOD amount of the last sample, for the voice to send on to the filters.
  float polyMod() const {return poly;}
+ float layerOne() const {return one;} float layerTwo() const {return two;} // DUAL: the last sample of each layer
  static constexpr float polyFreqOctaves=4.f,polyWidthDepth=.42f,polyShapeDepth=.5f;
 private:
  // MORPH: 0 triangle, 1/3 saw, 2/3 square, 1 narrow pulse; crossfades between neighbours, band-limited edges.
@@ -115,7 +118,7 @@ private:
  }
  Settings settings;
  double sr=96000,dco=0,subPhase=0,vco1=0,vco2=0,vcoSubPhase=0,range1=1,range2=1;
- float morph1=.33f,morph2=.33f,vcoSub=0,vcoNoise=0,poly=0,lastFirst=0;juce::Random noiseVco{7001};
+ float morph1=.33f,morph2=.33f,vcoSub=0,vcoNoise=0,poly=0,lastFirst=0,one=0,two=0;juce::Random noiseVco{7001};
  float follow=.004f,driftFollow=0,error1=0,error2=0,drift1=0,drift2=0,target1=0,target2=0;
  float blend=0,sourceMix=.5f,level=1,sub=.7f,noise=0,width=.5f,width1=.5f,width2=.5f,waveMix=.35f;
  int driftCount=0;juce::Random driftRandom{5},noiseDco{1001},noise1{3001},noise2{5001};

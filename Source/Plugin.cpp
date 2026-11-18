@@ -90,7 +90,8 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
    "filterBType","cutoffB","resonanceB","envB","slopeB","filterRoute","filterBlend","voiceDrive",  // FILTER B, ROUTING
    "mode","voiceMode","age","voiceWidth","hold","chorusMode","chorus","fxDrive",                  // VOICES, CHORUS
    "polyShape","polyMode","polyBP","lfoMode","lfoAmp","lfoOsc","atMode",                           // MODULATION
-   "voiceSpread","chordOn","unisonVoices",                                                                        // VOICE SPREAD, CHORD MEMORY
+   "voiceSpread","chordOn","unisonVoices",
+   "dualLayer","hpfII","al1","al2","fa2","fd2","fs2","fr2","attack2","decay2","sustain2","release2",       // DUAL LAYERS                                                                        // VOICE SPREAD, CHORD MEMORY
    "arpOn","arpSync","arpPattern","arpDivision","arpOctaves","arpTempo","arpGate","delayOn",      // ARPEGGIO
    "delayTime","delaySync","delayFeedback","delayMod","delayMix","reverbOn","reverbType","reverbSize", // DELAY, REVERB
    "reverbDamp","reverbColor","reverbMix","lfoManual","lfoTrig","atVolume","atLfo","atDrive",
@@ -108,7 +109,7 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
     {"fattack","Flt Attack"},{"fdecay","Flt Decay"},{"fsustain","Flt Sustain"},{"frelease","Flt Release"},{"envLink","Flt Env Src"},{"envInvert","A Env Pol"},{"envPitch","Env>Pitch"},{"pwmSource","PWM Source"},
     {"rate","LFO Rate"},{"lfoDelay","LFO Delay"},{"lfoShape","LFO Wave"},{"lfoPitch","LFO Pitch"},{"wheelDepth","Wheel Vib"},{"bendRange","Bend Range"},{"bendFilter","Bend>Filter"},{"unisonSpread","Uni Spread"},
     {"filterBType","B Model"},{"cutoffB","B Freq"},{"resonanceB","B Reso"},{"envB","B Env"},{"slopeB","B Slope"},{"filterRoute","Routing"},{"filterBlend","A/B Mix"},{"voiceDrive","Drive Pre"},
-    {"mode","Voices"},{"voiceMode","Assign"},{"age","Age"},{"voiceWidth","Width"},{"chordOn","Chord"},{"voiceSpread","Spread"},{"unisonVoices","Uni Voices"},{"polyShape","PM>Shape2"},{"polyMode","PM>Mode"},{"polyBP","PM>BandPass"},{"lfoMode","LFO>Mode"},{"lfoAmp","LFO>Level"},{"lfoOsc","LFO>VCO"},{"atMode","Press>Mode"},{"hold","Hold"},{"chorusMode","Chorus"},{"chorus","Chorus Mix"},{"gain","Volume"},
+    {"mode","Voices"},{"voiceMode","Assign"},{"age","Age"},{"voiceWidth","Width"},{"chordOn","Chord"},{"voiceSpread","Spread"},{"dualLayer","Dual"},{"hpfII","HPF II"},{"al1","F A.Level I"},{"al2","F A.Level II"},{"fa2","F Attack II"},{"fd2","F Decay II"},{"fs2","F I.Level II"},{"fr2","F Release II"},{"attack2","Attack II"},{"decay2","Decay II"},{"sustain2","Sustain II"},{"release2","Release II"},{"unisonVoices","Uni Voices"},{"polyShape","PM>Shape2"},{"polyMode","PM>Mode"},{"polyBP","PM>BandPass"},{"lfoMode","LFO>Mode"},{"lfoAmp","LFO>Level"},{"lfoOsc","LFO>VCO"},{"atMode","Press>Mode"},{"hold","Hold"},{"chorusMode","Chorus"},{"chorus","Chorus Mix"},{"gain","Volume"},
     {"arpOn","Arp On"},{"arpSync","Arp Sync"},{"arpPattern","Arp Mode"},{"arpDivision","Arp Step"},{"arpOctaves","Arp Range"},{"arpTempo","Arp Tempo"},{"arpGate","Arp Gate"},{"fxDrive","Drive Post"},
     {"delayTime","Dly Time"},{"delaySync","Dly Sync"},{"delayFeedback","Dly Fdbk"},{"delayMod","Dly Mod"},{"delayMix","Dly Level"},{"reverbType","Rev Type"},{"reverbSize","Rev Size"},{"reverbDamp","Rev Damp"},
     {"reverbColor","Rev Color"},{"reverbMix","Rev Level"},{"velFilter","Vel>Filter"},{"atFilter","Press>Filt"},{"delayOn","Dly On"},{"reverbOn","Rev On"},{"lfoSync","LFO Sync"},{"lfoKeyTrig","LFO KeyTrig"},{"envLfoTrig","Env LFO Trig"},{"wheelFilter","Wheel>Filt"},{"lfoManual","LFO Manual"},{"atVolume","Press>Vol"},{"atLfo","Press>LFO"},{"atDrive","Press>Drive"},{"lfoTrig","LFO Trig"},{"masterTune","Master Tune"}};
@@ -154,6 +155,12 @@ class Orbit : public AudioProcessor, private AudioProcessorValueTreeState::Liste
   add("attack","Attack (s)",0.001f,5,0.02f,0.33f);add("decay","Decay (s)",0.002f,12,0.6f,0.32f);add("sustain","Sustain",0,1,0.7f);add("release","Release (s)",0.002f,12,0.8f,0.32f); // Juno-60 spec sheet: decay and release to 12 s
   add("rate","LFO (Hz)",0.05f,20,0.6f,0.33f);add("pwm","PWM depth",0,1,0.3f);add("chorus","Chorus",0,1,0.35f);add("gain","Output",0,1,0.7f);
   add("fattack","Filter attack",0.001f,5,0.02f,0.33f);add("fdecay","Filter decay",0.002f,12,0.6f,0.32f);add("fsustain","Filter sustain",0,1,0.3f);add("frelease","Filter release",0.002f,12,0.8f,0.32f);
+  // DUAL (NOCTURNE): two complete layers per voice (I: VCO 1 > HPF I > filter A, II: VCO 2 > HPF II > filter B), each with
+  // a levelled filter envelope (I.L, A, A.L, D, R) and its own amp envelope; layer I uses the main envelopes.
+  keep(std::make_unique<AudioParameterBool>(ParameterID{"dualLayer",1},label("dualLayer","Dual layers"),false)); // off in INIT so a new patch starts simple; the factory sounds turn it on
+  add("hpfII","High-pass II",0,1,.25f);add("al1","Filter attack level I",0,1,1);add("al2","Filter attack level II",0,1,1);
+  add("fa2","Filter attack II",0.001f,5,0.02f,0.33f);add("fd2","Filter decay II",0.002f,12,0.6f,0.32f);add("fs2","Filter initial level II",0,1,0.3f);add("fr2","Filter release II",0.002f,12,0.8f,0.32f);
+  add("attack2","Attack II (s)",0.001f,5,0.02f,0.33f);add("decay2","Decay II (s)",0.002f,12,0.6f,0.32f);add("sustain2","Sustain II",0,1,0.7f);add("release2","Release II (s)",0.002f,12,0.8f,0.32f);
   add("hpfFreq","High-pass",0,1,.25f); /* bass boost below a quarter, flat, then a rising high-pass */ add("keytrack","Filter key track",0,1,0.5f);add("noise","Noise",0,1,0);add("velocity","Velocity",0,1,0);
   keep(std::make_unique<AudioParameterChoice>(ParameterID{"slope",1},label("slope","Filter A slope"),StringArray{"12 dB","24 dB"},1));
   keep(std::make_unique<AudioParameterChoice>(ParameterID{"chorusMode",1},label("chorusMode","Chorus mode"),StringArray{"OFF","I","II","I+II"},1));

@@ -53,22 +53,23 @@ private:
 // Same calls as juce::ADSR, which it replaces.
 class Contour {
 public:
- struct Parameters { float attack, decay, sustain, release; };
+ struct Parameters { float attack, decay, sustain, release, initial=0.f, peak=1.f; }; // initial / peak: the levelled filter envelope of NOCTURNE (I.L and A.L)
  void setSampleRate(double sr) { if(sampleRate!=sr)parametersValid=false;sampleRate=sr; }
  void setParameters(const Parameters& p) {
-  if(parametersValid&&p.attack==previous.attack&&p.decay==previous.decay&&p.sustain==previous.sustain&&p.release==previous.release)return;
+  if(parametersValid&&p.attack==previous.attack&&p.decay==previous.decay&&p.sustain==previous.sustain&&p.release==previous.release&&p.initial==previous.initial&&p.peak==previous.peak)return;
   previous=p;parametersValid=true;
-  sustain=p.sustain;
+  sustain=p.sustain;initial=p.initial;peak=p.peak;levelled=!(initial==0.f&&peak==1.f);levelRate=rate(p.attack/curve);
   attackRate=rate(p.attack/std::log(overshoot/(overshoot-1.f)));
   decayRate=rate(p.decay/curve); releaseRate=rate(p.release/curve);
  }
  void reset() { level=0; stage=idle; }
- void noteOn() { stage=attack; }
+ void noteOn() { stage=attack; if(levelled) level=initial; } // levelled: starts from I.L, rises (or falls) to A.L, then settles back on the sustain
  void noteOff() { if(stage!=idle) stage=release; }
  bool isActive() const { return stage!=idle; }
  float getNextSample() {
   switch(stage) {
-   case attack: level+=(overshoot-level)*attackRate; if(level>=1.f){level=1.f;stage=decay;} break;
+   case attack: if(levelled){level+=(peak-level)*levelRate;if(std::abs(peak-level)<.002f){level=peak;stage=decay;}break;}
+    level+=(overshoot-level)*attackRate; if(level>=1.f){level=1.f;stage=decay;} break;
    case decay: level+=(sustain-level)*decayRate; break;                 // also holds, and follows, the sustain level
    case release: level-=level*releaseRate; if(level<silence){level=0;stage=idle;} break;
    case idle: break;
@@ -80,7 +81,7 @@ private:
  static constexpr float overshoot=1.3f, curve=3.5f, silence=.001f;
  float rate(float timeConstant) const { return 1.f-std::exp(-1.f/(jmax(.0001f,timeConstant)*float(sampleRate))); }
  Parameters previous{};bool parametersValid=false;
- double sampleRate=44100; float level=0,sustain=1,attackRate=1,decayRate=1,releaseRate=1; Stage stage=idle;
+ double sampleRate=44100; float level=0,sustain=1,attackRate=1,decayRate=1,releaseRate=1,initial=0,peak=1,levelRate=1; bool levelled=false; Stage stage=idle;
 };
 
 // One LFO for the whole instrument, rendered once per audio block by the processor so that
@@ -208,7 +209,12 @@ public:
  void follow(int note){keyStretch=vintage?jlimit(.55f,1.6f,std::pow(keyFollow,float(note-60)/12.f)):1.f;}
  void setPan(float position){pan=jlimit(-1.f,1.f,position);} // -1 left, 0 centre, 1 right
  void envelopes(){const float stretch=vintage?(1.f+p("age")*envelopeError*timeOffset)*keyStretch:1.f;
-  env.setParameters({p("attack")*stretch,p("decay")*stretch,p("sustain"),p("release")*stretch});filterEnv.setParameters({p("fattack")*stretch,p("fdecay")*stretch,p("fsustain"),p("frelease")*stretch});gate.setParameters({.002f,.002f,1.f,.006f});}
+  env.setParameters({p("attack")*stretch,p("decay")*stretch,p("sustain"),p("release")*stretch});
+  // DUAL (NOCTURNE): layer II has its own amp envelope, and each layer a levelled filter envelope: from I.L (also its
+  // sustain) up or down to A.L in its attack time, back to I.L in its decay time, then down in its release.
+  if(p("dualLayer")>.5f){filterEnv.setParameters({p("fattack")*stretch,p("fdecay")*stretch,p("fsustain"),p("frelease")*stretch,p("fsustain"),p("al1")});
+   filterEnv2.setParameters({p("fa2")*stretch,p("fd2")*stretch,p("fs2"),p("fr2")*stretch,p("fs2"),p("al2")});env2.setParameters({p("attack2")*stretch,p("decay2")*stretch,p("sustain2"),p("release2")*stretch});}
+  else filterEnv.setParameters({p("fattack")*stretch,p("fdecay")*stretch,p("fsustain"),p("frelease")*stretch});gate.setParameters({.002f,.002f,1.f,.006f});}
  void retarget(int note,float velocity,int wheel){follow(note);held=true;double current=pitch.getCurrentValue();hz=MidiMessage::getMidiNoteInHertz(note);pitch.reset(getSampleRate(),p("portamento"));pitch.setCurrentAndTargetValue(current);pitch.setTargetValue(std::log2(hz));serial=++previousPitch.starts;previousPitch.pitch=pitched?std::exp2(current):hz;vel=velocity;pitchWheelMoved(wheel);}
  float randomPlace() const {return place;} // SPREAD RANDOM: drawn for each new note
  void startNote(int note,float velocity,SynthesiserSound*,int wheel) override {
@@ -221,9 +227,9 @@ public:
   const double origin=p("portamento")>.001f&&from>0?from:hz;pitch.setCurrentAndTargetValue(std::log2(origin));pitch.setTargetValue(std::log2(hz));serial=++previousPitch.starts;previousPitch.pitch=origin;pitched=true;
   // A note taken over while it still sounds: what it was putting out fades over a few milliseconds instead of stopping dead.
   tailL+=lastL;tailR+=lastR;lastL=lastR=0;fresh=true;vel=velocity;pitchWheelMoved(wheel);
-  a.reset();b.reset();highpass.reset();down.reset();bass=0;env.reset();filterEnv.reset();gate.reset();envelopes();env.noteOn();filterEnv.noteOn();gate.noteOn();lfoAge=0;pressure=0;lfoOffset=0;trigPhase=0;lfoLast=0;held=true;
+  a.reset();b.reset();highpass.reset();down.reset();bass=0;env.reset();filterEnv.reset();gate.reset();env2.reset();filterEnv2.reset();highpass2.reset();envelopes();env.noteOn();filterEnv.noteOn();gate.noteOn();env2.noteOn();filterEnv2.noteOn();lfoAge=0;pressure=0;lfoOffset=0;trigPhase=0;lfoLast=0;held=true;
  }
- void stopNote(float,bool tail) override {held=false;env.noteOff();filterEnv.noteOff();gate.noteOff();if(!tail){env.reset();filterEnv.reset();gate.reset();clearCurrentNote();}}
+ void stopNote(float,bool tail) override {held=false;env.noteOff();filterEnv.noteOff();gate.noteOff();env2.noteOff();filterEnv2.noteOff();if(!tail){env.reset();filterEnv.reset();gate.reset();env2.reset();filterEnv2.reset();clearCurrentNote();}}
  void pitchWheelMoved(int value) override {wheelValue=value;}
  void controllerMoved(int cc,int value) override {if(cc==1)wheel=float(value)/127.f;}
  // Pressure: channel aftertouch, or polyphonic aftertouch on this voice's key. It opens the filters (PRESS) and,
@@ -231,7 +237,7 @@ public:
  void channelPressureChanged(int value) override {pressure=float(value)/127.f;}
  void aftertouchChanged(int value) override {pressure=float(value)/127.f;}
  void setUnison(float cents,float amplitude){unisonCents=cents;voiceGain=amplitude;}
- void prepare(double sr){oscillators.prepare(sr);env.setSampleRate(sr);filterEnv.setSampleRate(sr);gate.setSampleRate(sr);highpass.prepare({2.*sr,1024,1});highpass.setType(dsp::StateVariableTPTFilterType::highpass);a.prepare(2.*sr);b.prepare(2.*sr);down.reset();} // the audio path runs at twice the rate
+ void prepare(double sr){oscillators.prepare(sr);env.setSampleRate(sr);filterEnv.setSampleRate(sr);gate.setSampleRate(sr);env2.setSampleRate(sr);filterEnv2.setSampleRate(sr);highpass2.prepare({2.*sr,1024,1});highpass2.setType(dsp::StateVariableTPTFilterType::highpass);highpass.prepare({2.*sr,1024,1});highpass.setType(dsp::StateVariableTPTFilterType::highpass);a.prepare(2.*sr);b.prepare(2.*sr);down.reset();} // the audio path runs at twice the rate
  void renderNextBlock(AudioBuffer<float>& out,int start,int count) override {
   if(!isVoiceActive()){lastL=lastR=tailL=tailR=0;return;} // silent since the last block: nothing left to fade
   envelopes();const double sr=getSampleRate();
@@ -239,6 +245,10 @@ public:
   // zone, then a high-pass rising from 40 Hz to 1 kHz.
   const float hpfPos=p("hpfFreq");const int hpfMode=hpfPos<.25f?0:(hpfPos<=.3f?1:2);const float boostGain=bassBoostGain*jlimit(0.f,1.f,(.25f-hpfPos)/.25f);
   if(hpfMode==2)highpass.setCutoffFrequency(40.f*std::pow(25.f,(hpfPos-.3f)/.7f));
+  // DUAL: layer I = VCO 1 (+ sub) through HPF I and filter A, layer II = VCO 2 through HPF II and filter B, each with its
+  // own envelopes, mixed by the source fader. Both layers share the LFO, the modulations, the drive and the effects.
+  const bool dual=p("dualLayer")>.5f;const float layerMix=p("oscLayer"),hpf2Pos=p("hpfII");const bool hpf2On=dual&&hpf2Pos>.3f;
+  if(hpf2On)highpass2.setCutoffFrequency(40.f*std::pow(25.f,(hpf2Pos-.3f)/.7f));
   const float bassRate=1.f-std::exp(-MathConstants<float>::twoPi*bassBoostHz/float(2.*sr)); // runs at twice the rate (see below)
   a.configure(int(p("filterAType")),int(p("slope")),p("resonance"));b.configure(int(p("filterBType")),int(p("slopeB")),p("resonanceB"));
   a.setMode(p("filterMode"),p("filterBP")>.5f);b.setMode(0.f,false); // MULTI: MODE and BP on filter A; filter B's multimode is a low-pass
@@ -292,7 +302,8 @@ public:
   // Equal-power placement; exactly 1 on both sides at the centre.
   const float angle=(pan+1.f)*MathConstants<float>::pi*.25f,gainL=pan==0.f?1.f:1.41421356f*std::cos(angle),gainR=pan==0.f?1.f:1.41421356f*std::sin(angle);
   for(int i=0;i<count;++i){
-   float e=env.getNextSample(),fe=filterEnv.getNextSample();if(linked)fe=e;
+   float e=env.getNextSample(),fe=filterEnv.getNextSample();if(linked&&!dual)fe=e;
+   const float e2=dual?env2.getNextSample():0.f,fe2=dual?filterEnv2.getNextSample():0.f;
    const float open=gate.getNextSample(),amp=gated?open:(vcaSource==2?fe:e);
    pressureNow+=pressRate*(pressure-pressureNow);
    float lfoNow=bus.lfo[size_t(start+i)],t=bus.phase[size_t(start+i)];
@@ -318,7 +329,7 @@ public:
    const float pwmSignal=pwmSource==0?.18f*modulation:pwmSource==2?.4f*fe:pwmSource==3?-.4f*fe:pwmSource==4?.4f*e:pwmSource==5?-.4f*e:0.f; // LFO, MAN, filter env +/-, amp env +/-
    punch*=punchDecay; // the percussive front of a vintage note
    const float caBase=jlimit(25.f,float(sr*.45),(1.f+punchCutoff*punch)*cutNow*cutSpread*tracking*velocityOpen*wheelOpen*std::exp2(pressFilter*pressureNow)*bendCutoff*std::pow(2.f,fe*amount*polarity*6+modulation*filterDepth+lfoNow*pressLfo*pressureNow));
-   const float cbBase=jlimit(25.f,float(sr*.45),cutBNow*cutSpread*tracking*velocityOpen*wheelOpen*std::exp2(pressFilter*pressureNow)*bendCutoff*std::pow(2.f,fe*amountB*6+modulation*filterDepth+lfoNow*pressLfo*pressureNow));
+   const float cbBase=jlimit(25.f,float(sr*.45),cutBNow*cutSpread*tracking*velocityOpen*wheelOpen*std::exp2(pressFilter*pressureNow)*bendCutoff*std::pow(2.f,(dual?fe2:fe)*amountB*6+modulation*filterDepth+lfoNow*pressLfo*pressureNow));
    // Oscillators, mixer, filters and drive run at twice the sample rate and come back down through a half-band
    // filter to reduce aliasing from sync, cross modulation and saturation. This does not eliminate all aliasing.
    // Pressure can also push the drive (from any PRE setting, and in both voice counts), add LFO on the filters, and
@@ -332,20 +343,25 @@ public:
     // POLY-MOD > FILTER: the same signal moves both cutoffs, up to three octaves each way, at audio rate.
     const float polyOpen=polyFilter?std::exp2(polyFilterOctaves*oscillators.polyMod()):1.f;
     const float ca=jlimit(25.f,float(sr*.9),caBase*polyOpen),cb=jlimit(25.f,float(sr*.9),cbBase*polyOpen);
+    if(dual){float one=oscillators.layerOne(),two=oscillators.layerTwo();
+     if(hpfMode>=2)one=highpass.processSample(0,one);else if(hpfMode==0){bass+=bassRate*(one-bass);one+=boostGain*bass;}
+     if(hpf2On)two=highpass2.processSample(0,two);
+     sample=(1.f-layerMix)*a.process(one,ca)*e+layerMix*b.process(two,cb)*e2;}
+    else{
     if(hpfMode>=2)sample=highpass.processSample(0,sample);else if(hpfMode==0){bass+=bassRate*(sample-bass);sample+=boostGain*bass;}
-    switch(route){case 1:sample=b.process(sample,cb);break;case 2:sample=b.process(a.process(sample,ca),cb);break;case 3:sample=a.process(b.process(sample,cb),ca);break;case 4:sample=(1-blend)*a.process(sample,ca)+blend*b.process(sample,cb);break;default:sample=a.process(sample,ca);}
+    switch(route){case 1:sample=b.process(sample,cb);break;case 2:sample=b.process(a.process(sample,ca),cb);break;case 3:sample=a.process(b.process(sample,cb),ca);break;case 4:sample=(1-blend)*a.process(sample,ca)+blend*b.process(sample,cb);break;default:sample=a.process(sample,ca);}}
     if(g>0.f){sample+=gMix*((std::tanh(gPush*sample+gLean)-gOffset)*gScale-sample);dc+=dcRate*(sample-dc);sample-=dc;} // the lopsided curve leaves a small offset: removed here
     twice[k]=sample;
    }
    float sample=down.process(twice[0],twice[1]);
-   sample*=(1.f-lfoAmpDepth*.5f*(1.f-modulation))*amp*(1-velocity+velocity*vel)*.18f*voiceGain*(1.f+punchLevel*punch)*(pressVolume>0.f?std::exp2(pressVolume*pressureNow):1.f);
+   sample*=(1.f-lfoAmpDepth*.5f*(1.f-modulation))*(dual?1.f:amp)*(1-velocity+velocity*vel)*.18f*voiceGain*(1.f+punchLevel*punch)*(pressVolume>0.f?std::exp2(pressVolume*pressureNow):1.f);
    lastL=sample*gainL;lastR=sample*gainR;tailL*=tailDecay;tailR*=tailDecay;
    for(int ch=0;ch<out.getNumChannels();++ch)out.addSample(ch,start+i,ch==0?lastL+tailL:(ch==1?lastR+tailR:sample));
-   if(!(gated?gate.isActive():(vcaSource==2&&!linked?filterEnv.isActive():env.isActive()))){clearCurrentNote();break;}
+   if(dual?!(env.isActive()||env2.isActive()):!(gated?gate.isActive():(vcaSource==2&&!linked?filterEnv.isActive():env.isActive()))){clearCurrentNote();break;}
   }
  }
 private:
- AudioProcessorValueTreeState& state;ParameterReadCache parameterReads;GlideMemory& previousPitch;uint64 serial=0;const ModulationBus& bus;const ParamLayer* layer=nullptr;SmoothedValue<double> pitch;Contour env,filterEnv,gate;FilterSlot a,b;HalfBand down;OscillatorBank oscillators;dsp::StateVariableTPTFilter<float> highpass;
+ AudioProcessorValueTreeState& state;ParameterReadCache parameterReads;GlideMemory& previousPitch;uint64 serial=0;const ModulationBus& bus;const ParamLayer* layer=nullptr;SmoothedValue<double> pitch;Contour env,filterEnv,gate,env2,filterEnv2;dsp::StateVariableTPTFilter<float> highpass2;FilterSlot a,b;HalfBand down;OscillatorBank oscillators;dsp::StateVariableTPTFilter<float> highpass;
  float cutNow=0,cutBNow=0,lastL=0,lastR=0,tailL=0,tailR=0;bool fresh=true,pitched=false;
  Random placeRandom{7919};float place=0;double hz=440;float vel=0,wheel=0,unisonCents=0,voiceGain=1,lfoAge=0,bass=0,pan=0,dc=0;
  float pressure=0,pressureNow=0,lfoLast=0,manualLevel=0;double trigPhase=0,lfoOffset=0;bool held=false;

@@ -526,16 +526,16 @@ private:
   if (showScale) addEffectScale(id, cell);
   if (StringRef(id) == StringRef("gain")) control.slider.getProperties().set("faceDiameter", 44.f);
  }
- void addRowKnob(const char* id, const char* text, Rectangle<int> cell) {
-  caption(text, cell.withHeight(16), 0);
+ void addRowKnob(const char* id, const char* text, Rectangle<int> cell, int pg = -1) {
+  caption(text, cell.withHeight(16), pg);
   const int width = jmin(56, cell.getWidth());
-  auto& control = addControl(id, Slider::RotaryHorizontalVerticalDrag, Rectangle<int>(cell.getCentreX() - width / 2, cell.getY() + 26, width, 56), 0);
+  auto& control = addControl(id, Slider::RotaryHorizontalVerticalDrag, Rectangle<int>(cell.getCentreX() - width / 2, cell.getY() + 26, width, 56), pg);
   control.slider.getProperties().set("faceDiameter", 39.f);
   auto* valueLabel = labels.add(new Label());
   valueLabel->setFont(orbitui::legend(13.f)); valueLabel->setColour(Label::textColourId, orbitui::ink);
   valueLabel->setJustificationType(Justification::centred); valueLabel->setInterceptsMouseClicks(false, false);
   valueLabel->getProperties().set("live", true); // changes with the control: never printed in the rendered artwork
-  place(*valueLabel, {cell.getX(), cell.getY() + 77, cell.getWidth(), 14}, 0);
+  place(*valueLabel, {cell.getX(), cell.getY() + 77, cell.getWidth(), 14}, pg);
   auto update = [valueLabel, slider = &control.slider] { auto text = slider->getTextFromValue(slider->getValue());
    if (text.containsChar('(')) text = text.fromFirstOccurrenceOf("(", false, false).upToFirstOccurrenceOf(")", false, false);
    valueLabel->setText(text, dontSendNotification); };
@@ -578,13 +578,13 @@ private:
   if (freeKnob.getProperties().contains("faceDiameter")) sync->knob->getProperties().set("faceDiameter", freeKnob.getProperties()["faceDiameter"]);
   place(*sync->knob, freeKnob.getBounds(), page);
  }
- void chipChoice(const char* id,const char* title,const StringArray& names,Rectangle<int> cell,bool vertical=false){
-  caption(title,cell.withHeight(15),-1,12.f);
+ void chipChoice(const char* id,const char* title,const StringArray& names,Rectangle<int> cell,bool vertical=false,int pg=-1){
+  caption(title,cell.withHeight(15),pg,12.f);
   if(vertical&&names.size()<=3){ // a two- or three-way choice is a slide switch, its names beside the stops
    auto* control=switches.add(new SlideSwitch(*orbit.state.getParameter(id),names));control->getProperties().set("parameterId",id);
-   place(*control,cell.withTrimmedTop(18),-1);return;}
+   place(*control,cell.withTrimmedTop(18),pg);return;}
   auto* control=panelChoices.add(new PanelChoice(*orbit.state.getParameter(id),names,vertical));control->getProperties().set("parameterId",id);
-  place(*control,cell.withTrimmedTop(18),-1);
+  place(*control,cell.withTrimmedTop(18),pg);
  }
  void compactKnob(const char* id,const char* title,Rectangle<int> cell){
   caption(title,cell.withHeight(14),-1,11.f);
@@ -596,10 +596,10 @@ private:
   auto* button=menuButtons.add(new ChoiceMenuButton(*orbit.state.getParameter(id)));button->getProperties().set("parameterId",id);
   place(*button,{cell.getX(),cell.getY()+19,cell.getWidth(),28},-1);
  }
- void printedToggle(const char* id,const char* title,Rectangle<int> cell){
-  addToggle(id,title,-1,cell.withHeight(45),0,orbitui::neutral);toggles.getLast()->button.getProperties().set("legendAbove",true);
+ void printedToggle(const char* id,const char* title,Rectangle<int> cell,int pg=-1){
+  addToggle(id,title,pg,cell.withHeight(45),0,orbitui::neutral);toggles.getLast()->button.getProperties().set("legendAbove",true);
  }
- Rectangle<int> section(const char* title,Colour colour,Rectangle<int> area){sections.push_back({title,colour,area,-1});sectionColour=colour;return area.withTrimmedTop(36).reduced(8,0);}
+ Rectangle<int> section(const char* title,Colour colour,Rectangle<int> area,int pg=-1){sections.push_back({title,colour,area,pg});sectionColour=colour;return area.withTrimmedTop(36).reduced(8,0);}
  void useOwnFilterEnvelope() {
   auto* link = orbit.state.getParameter("envLink");
   if (link->getValue() > .5f) { link->beginChangeGesture(); link->setValueNotifyingHost(0.f); link->endChangeGesture(); }
@@ -631,33 +631,47 @@ private:
 // ---- first row: the playing faders ------------------------------------------------------
  void buildPanelA(){
   using namespace orbitui;
-  // POLY-MOD: two signed sources (filter envelope, VCO 1), three destinations switched on and off.
   // POLY-MOD: two signed sources (filter envelope, VCO 1), six destinations switched on and off: VCO 2 pitch, pulse
   // width and shape, the filters' cutoff, the filter MODE (MULTI) and a blend into band-pass.
   auto area=section("POLY-MOD",steel,{32,panelY,282,panelH});auto cells=split(area,{1,1,.9f,.9f});
-  addFader("polyEnv","FILT ENV",0,cells[0].withTrimmedBottom(10));addFader("polyOsc","VCO 1",0,cells[1].withTrimmedBottom(10));
-  caption("DESTINATIONS",cells[2].getUnion(cells[3]).withHeight(16),0);
+  addFader("polyEnv","FILT ENV",-1,cells[0].withTrimmedBottom(10));addFader("polyOsc","VCO 1",-1,cells[1].withTrimmedBottom(10));
+  caption("DESTINATIONS",cells[2].getUnion(cells[3]).withHeight(16),-1);
   const char* polyIds[]={"polyFreq","polyWidth","polyShape","polyFilter","polyMode","polyBP"};const char* polyNames[]={"FREQ 2","PW 2","SHAPE 2","FILTER","MODE","BP"};
   for(int i=0;i<6;++i){const auto& column=cells[2+i/3];printedToggle(polyIds[i],polyNames[i],column.withSizeKeepingCentre(52,45).withY(column.getY()+22+(i%3)*58));}
+  // MIXER: in DUAL, the source fader is the balance of the two layers (I at the bottom, II at the top).
   area=section("MIXER",steel,{320,panelY,238,panelH});cells=split(area,{1,1,1,1.2f});
-  addFader("oscLayer","VCO 2",0,cells[0].withTrimmedBottom(26));caption("VCO 1",cells[0].withY(area.getBottom()-23).withHeight(17),0,12);
-  addFader("vcoSub","SUB",0,cells[1].withTrimmedBottom(10));addFader("vcoNoise","NOISE",0,cells[2].withTrimmedBottom(10));
+  addFader("oscLayer","II",-1,cells[0].withTrimmedBottom(26));caption("I",cells[0].withY(area.getBottom()-23).withHeight(17),-1,12);
+  addFader("vcoSub","SUB",-1,cells[1].withTrimmedBottom(10));addFader("vcoNoise","NOISE",-1,cells[2].withTrimmedBottom(10));
   addRowKnob("vcoPwm","VCO PWM",cells[3]);addRowKnob("voiceDrive","DRIVE",cells[3].withTrimmedTop(100)); // the voices' drive, before the filters
-  area=section("FILTER A",steel,{564,panelY,432,panelH});cells=split(area,{1,1,1,1,1,1,1,1.65f,1.35f});
-  const char* filterIds[]={"hpfFreq","cutoff","resonance","env","lfoFilter","keytrack","velFilter"};const char* filterNames[]={"HPF","FREQ","RES","ENV","LFO","KYBD","VEL"};
-  for(int i=0;i<7;++i)addFader(filterIds[i],filterNames[i],0,cells[i].withTrimmedBottom(10));
-  chipChoice("filterAType","MODEL",{"LADDER","SVF","MULTI"},cells[7].withHeight(95),true);
-  chipChoice("slope","SLOPE",{"12","24"},cells[7].withTrimmedTop(110).withHeight(75),true);
-  // MULTI: MODE sweeps low-pass, notch, high-pass; BP takes the band-pass instead.
-  addRowKnob("filterMode","LP N HP",cells[8]);printedToggle("filterBP","BP",cells[8].withTrimmedTop(118).withSizeKeepingCentre(44,45));
-  area=section("ENV / AMP",steel,{1002,panelY,244,panelH});cells=split(area,{1,1,1,1,1});
-  const char* ampIds[]={"attack","decay","sustain","release","velocity"};const char* ampNames[]={"A","D","S","R","VEL"};
-  for(int i=0;i<5;++i)addFader(ampIds[i],ampNames[i],0,cells[i].withTrimmedBottom(10));
-  area=section("ENV / FILTER",steel,{1252,panelY,316,panelH});cells=split(area,{1,1,1,1,1.9f});
-  const char* envIds[]={"fattack","fdecay","fsustain","frelease"};const char* envNames[]={"A","D","S","R"};
-  for(int i=0;i<4;++i){auto& fader=addFader(envIds[i],envNames[i],0,cells[i].withTrimmedBottom(10));fader.followsLink=true;fader.slider.onDragStart=[this]{useOwnFilterEnvelope();};}
-  chipChoice("envLink","SOURCE",{"OWN","AMP"},cells[4].withHeight(75),true);
-  chipChoice("envInvert","POLARITY",{"NORM","INV"},cells[4].withTrimmedTop(100).withHeight(75),true);
+  // LAYERS: page I shows layer I (VCO 1 > HPF I > filter A, its envelopes), page II layer II (VCO 2 > HPF II > filter B).
+  // DUAL turns the two separate layers on; off, both VCOs share filter A and the main envelopes.
+  for(int pg=0;pg<2;++pg){const bool two=pg==1;
+   area=section(two?"FILTER II":"FILTER I",steel,{564,panelY,432,panelH},pg);
+   if(!two){cells=split(area,{1,1,1,1,1,1,1,1.65f,1.35f});
+    const char* filterIds[]={"hpfFreq","cutoff","resonance","env","lfoFilter","keytrack","velFilter"};const char* filterNames[]={"HPF","FREQ","RES","ENV","LFO","KYBD","VEL"};
+    for(int i=0;i<7;++i)addFader(filterIds[i],filterNames[i],0,cells[i].withTrimmedBottom(10));
+    chipChoice("filterAType","MODEL",{"LADDER","SVF","MULTI"},cells[7].withHeight(95),true,0);
+    chipChoice("slope","SLOPE",{"12","24"},cells[7].withTrimmedTop(110).withHeight(75),true,0);
+    addRowKnob("filterMode","LP N HP",cells[8],0);printedToggle("filterBP","BP",cells[8].withTrimmedTop(118).withSizeKeepingCentre(44,45),0);}
+   else{cells=split(area,{1,1,1,1,1,1,1,1.65f,1.35f});
+    const char* filterIds[]={"hpfII","cutoffB","resonanceB","envB","lfoFilter","keytrack","velFilter"};const char* filterNames[]={"HPF","FREQ","RES","ENV","LFO","KYBD","VEL"};
+    for(int i=0;i<7;++i)addFader(filterIds[i],filterNames[i],1,cells[i].withTrimmedBottom(10));
+    chipChoice("filterBType","MODEL",{"LADDER","SVF","MULTI"},cells[7].withHeight(95),true,1);
+    chipChoice("slopeB","SLOPE",{"12","24"},cells[7].withTrimmedTop(110).withHeight(75),true,1);}
+   area=section(two?"ENV / AMP II":"ENV / AMP I",steel,{1002,panelY,244,panelH},pg);cells=split(area,{1,1,1,1,1});
+   const char* ampIds[]={"attack","decay","sustain","release","velocity"};const char* ampIds2[]={"attack2","decay2","sustain2","release2","velocity"};const char* ampNames[]={"A","D","S","R","VEL"};
+   for(int i=0;i<5;++i)addFader(two?ampIds2[i]:ampIds[i],ampNames[i],pg,cells[i].withTrimmedBottom(10));
+   // ENV / FILTER: the levelled envelope: from I.L (initial level, also the sustain) to A.L in A, back to I.L in D, down in R.
+   area=section(two?"ENV / FILTER II":"ENV / FILTER I",steel,{1252,panelY,316,panelH},pg);cells=split(area,{1,1,1,1,1,1.5f});
+   const char* envIds[]={"fsustain","fattack","al1","fdecay","frelease"};const char* envIds2[]={"fs2","fa2","al2","fd2","fr2"};const char* envNames[]={"I.L","A","A.L","D","R"};
+   for(int i=0;i<5;++i){auto& fader=addFader(two?envIds2[i]:envIds[i],envNames[i],pg,cells[i].withTrimmedBottom(10));if(!two){fader.followsLink=true;fader.slider.onDragStart=[this]{useOwnFilterEnvelope();};}}
+   if(!two)chipChoice("envLink","SOURCE",{"OWN","AMP"},cells[5].withHeight(75),true,0);
+   chipChoice("envInvert","POLARITY",{"NORM","INV"},cells[5].withTrimmedTop(100).withHeight(75),true,pg);}
+  // Layer page keys and DUAL, on the FILTER title bar.
+  addToggle("dualLayer","DUAL",-1,{564+432-148,panelY+3,62,21},0,neutral);toggles.getLast()->button.getProperties().set("fontSize",11.f);
+  for(int pg=0;pg<2;++pg){auto* key=layerKeys.add(new TextButton(pg?"II":"I"));place(*key,{564+432-80+pg*36,panelY+3,32,21},-1);key->getProperties().set("fontSize",12.f);
+   key->setClickingTogglesState(false);key->onClick=[this,pg]{setPage(pg);for(int k=0;k<layerKeys.size();++k)layerKeys[k]->setToggleState(k==pg,dontSendNotification);};}
+  layerKeys[0]->setToggleState(true,dontSendNotification);
  }
  void buildRowTwo(){
   using namespace orbitui;
@@ -1063,7 +1077,7 @@ SequenceEditor sequenceEditor{orbit};
  std::vector<Rectangle<float>> tagRules; OwnedArray<PanelChoice> panelChoices; OwnedArray<Label> labels; OwnedArray<Fader> faders; OwnedArray<Toggle> toggles; OwnedArray<ChoiceButtons> choices; OwnedArray<WaveKnob> waveKnobs; OwnedArray<SlideSwitch> switches; OwnedArray<ChoiceMenuButton> menuButtons; Slider* delayTimeKnob = nullptr;
  struct Sync { std::unique_ptr<SyncKey> key; std::unique_ptr<SyncKnob> knob; Slider* free = nullptr; Label* value = nullptr; const char* id = ""; bool wasSynced = true; };
  OwnedArray<Sync> syncs;
- OwnedArray<TextButton> bankButtons, patchButtons;
+ OwnedArray<TextButton> bankButtons, patchButtons, layerKeys;
  Slider pitchWheel; ComboBox presets; TextButton saveButton, loadButton, octDown, octUp, midiButton, lfoTrigButton; bool lfoTrigDown = false; void* forceMonitor = nullptr; int sentPressure = 0;
  StringArray userNames, soundNames; String displayLine; Colour sectionColour{orbitui::neutral};
  int page = 0, octave = 2, shownBank = 0, lastProgram = -1;
