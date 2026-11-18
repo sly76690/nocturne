@@ -8,19 +8,21 @@ class FactoryBank {
 public:
  static const juce::StringArray& order() {
   static const juce::StringArray names{
-   // A: brass and chords
-   "BRASS - Vantage Brass","BRASS - Arena Stabs","BRASS - Soft Horns","BRASS - Hollow Notch",
-   "CHORD - Minor Seventh Stabs","CHORD - Power Fifths","CHORD - Sus Horizon","CHORD - Major Ninth Keys",
-   // B: pads, keys and air
-   "PAD - Wide Strings","PAD - Notch Drift","PAD - Band Choir","PAD - Highpass Air","PAD - Eight Rivers",
-   "KEYS - Bright Poly","KEYS - Band Clav","FX - Filter Wind",
-   // C: basses, leads and sequences
-   "BASS - Round Twelve","BASS - Unison Wall","BASS - Band Pulse","LEAD - Sync Horn","LEAD - Singing Band","LEAD - Unison Solo",
-   "SEQ - Chord Steps","SEQ - Notch Pulse",
-   // D: the modulation section
-   "BASS - Talking Mode","BASS - Mode Pluck","PAD - Mode Sweep","PAD - Tremolo Strings","PAD - Pressure Choir","KEYS - Shape Bells","KEYS - Metal Comb","LEAD - Vowel Lead",
-   // E: unison counts, S&H, ramps and movement
-   "LEAD - Three Voice Unison","BASS - Four Voice Unison","BRASS - Unison Section","FX - Random Band","FX - Ramp Rise","PAD - Spread Pitch","CHORD - Notch Organ","SEQ - Mode Steps"};
+   // A: brass that swells under the fingers
+   "BRASS - Night Brass","BRASS - Pressure Swell","BRASS - Rising Octave","BRASS - Wah Horns",
+   "BRASS - Low Section","BRASS - Bright Stabs","BRASS - Ribbon Fanfare","BRASS - Felt Horns",
+   // B: crying pads and dark pads
+   "PAD - Crying Strings","PAD - Weeping Choir","PAD - Dark Hall","PAD - Slow Tide",
+   "PAD - Midnight Glass","PAD - Moon Drift","PAD - Sorrow Strings","PAD - Deep Velvet",
+   // C: ring bells and keys
+   "BELL - Ring Bells","BELL - Glass Chimes","BELL - Temple Gong","BELL - Ice Mallets",
+   "KEYS - Felt Keys","KEYS - Ring Tremolo","KEYS - Dual Clav","KEYS - Silver Harpsi",
+   // D: ribbon leads and basses
+   "LEAD - Ribbon Solo","LEAD - Crying Lead","LEAD - Twin Saw","LEAD - Ring Lead",
+   "BASS - Night Bass","BASS - Dual Pluck","BASS - Ring Bass","BASS - Velvet Low",
+   // E: textures, effects, sequences (press PLAY) and chord memory
+   "FX - Night Wind","FX - Metal Rain","FX - Rising Sweep","FX - Distant Sirens",
+   "SEQ - Night Pulse","SEQ - Ring Steps","CHORD - Dark Minor","CHORD - Open Fifths"};
   return names;
  }
  static std::unique_ptr<juce::XmlElement> load(const juce::String& name) {
